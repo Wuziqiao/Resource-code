@@ -1,0 +1,742 @@
+package model;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.FileWriter;
+import java.io.File;
+import java.util.Arrays;//sorting function class
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
+
+
+public class Main_Function extends Common_Function 
+{   
+	
+	public Main_Function(int errorType) throws NumberFormatException, IOException
+	{
+		super();
+		this.err_type = errorType;
+		// TODO Auto-generated constructor stub
+	}
+
+	int m=1;
+	int Top_K=5;// top_K
+	int Test_Random_Top_K=500;// choosing from unrated items by user
+     double MAX_NDCG = 0;
+    double MAX_precision = 0;
+
+	   double alpha=0.5;//control the L1-norm and L2-norm
+
+	public void train() throws IOException
+	{		
+	    double sumRating = 0;        
+		double sum = 0;               
+		double Globalaverage=0;           
+		double[] Bi = new double[item_MaxID+1];     
+		double[] Bu = new double[user_MaxID+1];       
+		
+		double[] tempPu = new double[featureDimension];
+		double[] tempDeltaPu = new double[featureDimension];
+		double[] tempPu1 = new double[featureDimension];
+		double[] tempQi = new double[featureDimension];
+		double[] tempQi1 = new double[featureDimension];
+		double[] tempDeltaQi = new double[featureDimension];
+     
+		int[] Ri = new int[item_MaxID+1];                 
+		int[] Ru = new int[user_MaxID+1];           
+		double[] bi = new double[item_MaxID+1];     
+		double[] bu = new double[user_MaxID+1];     
+		double[] sumC = new double[user_MaxID+1];
+		double Riave = 0;
+		double Ruave = 0;
+		
+		//////////////computing biases start//////////////////
+		for(RTuple tempRating : trainData)
+		{
+			sumRating += tempRating.dRating;                      
+		    sum ++;
+		     Ri[tempRating.iItemID] ++;                             
+		     bi[tempRating.iItemID] += tempRating.dRating;
+		     Ru[tempRating.iUserID] ++;
+		     bu[tempRating.iUserID] += tempRating.dRating;	   
+		}	
+		
+			
+			for(int i = 1; i <= item_MaxID; i++)
+			{
+	               Riave += Ri[i];
+			}
+			    Riave = Riave/item_MaxID/20;
+			    
+			for(int j = 1; j <= user_MaxID; j++)
+			{
+	             Ruave += Ru[j]; 
+			}
+		        Ruave = Ruave/user_MaxID/20;	      
+
+			switch(m)
+			{
+			case 1:{
+				Globalaverage = 0;
+				for(int i =1;i<item_MaxID;i++)
+				{
+					Bi[i]=0;
+				}
+				for(int j =1;j<user_MaxID;j++)
+				{
+					Bu[j]=0;
+				}    
+			}break;
+			case 2:{
+				Globalaverage = sumRating/sum;
+				getUseBias(Globalaverage,bi,Ri,Riave,Bi);
+				for(RTuple tempRating : trainData)
+				{
+			     	sumC[tempRating.iUserID] += Bi[tempRating.iItemID];   			       
+				}
+			    getItemBias(Globalaverage,bu,Ru,Ruave,sumC,Bu);    
+			}break;
+		
+			}	
+			//////////////computing biases over//////////////////	
+			
+			
+		  /////////training the L3F model start////////
+			
+			double SumLossCumulativeL1=0; double SumLossCumulativeL2=0; 
+		for (int round = 1; round <= trainingRound; round++) 
+		{
+				
+
+
+				for (RTuple tempRating : trainData)    /// for each known entries of the HiDS matrix 
+			{
+				
+		        double  ratingHat= tempRating.dRating - Globalaverage - Bi[tempRating.iItemID] - Bu[tempRating.iUserID];
+				double rPrediction = this.getLocPrediction(tempRating.iUserID,tempRating.iItemID);
+				double err = ratingHat-rPrediction; 
+				
+							
+				
+				if(err>0)///////open absolute err>0
+				{	
+					vectorMutiply(P[tempRating.iUserID], (1 - eta * lambda), tempPu); //eta_u
+					vectorMutiply(P[tempRating.iUserID], err * eta*(1-alpha), tempDeltaPu);//eta_i
+					
+					vectorMutiply(Q[tempRating.iItemID], (1 - eta * lambda), tempQi);//eta_i
+					vectorMutiply(Q[tempRating.iItemID], err * eta*(1-alpha), tempDeltaQi);//eta_u
+
+					vectorAdd(tempPu, tempDeltaQi, tempPu1);
+					vectorAdd(tempQi, tempDeltaPu, tempQi1);
+					
+					vectorMutiply(Q[tempRating.iItemID], alpha*eta, tempQi);//eta_u
+					vectorMutiply(P[tempRating.iUserID], alpha*eta, tempPu);//eta_i
+					
+					vectorAdd(tempPu1, tempQi, P[tempRating.iUserID]);
+					vectorAdd(tempQi1, tempPu, Q[tempRating.iItemID]);
+				}
+				
+				if(err<0)///////open absolute err<0
+				{				
+					vectorMutiply(P[tempRating.iUserID], (1 - eta * lambda), tempPu);//eta_u
+					vectorMutiply(P[tempRating.iUserID], err * eta*(1-alpha), tempDeltaPu);//eta_i
+					
+					vectorMutiply(Q[tempRating.iItemID], (1 - eta * lambda), tempQi);//eta_i
+					vectorMutiply(Q[tempRating.iItemID], err * eta*(1-alpha), tempDeltaQi);//eta_u
+
+					vectorAdd(tempPu, tempDeltaQi, tempPu1);
+					vectorAdd(tempQi, tempDeltaPu, tempQi1);
+					
+					vectorMutiply(Q[tempRating.iItemID], alpha*eta, tempQi);//eta_u
+					vectorMutiply(P[tempRating.iUserID], alpha*eta, tempPu);//eta_i
+										
+					vectorSub(tempPu1, tempQi, P[tempRating.iUserID]);
+					vectorSub(tempQi1, tempPu, Q[tempRating.iItemID]);
+					
+				}
+		
+			}//end for train 
+
+				
+//				///adaptively updating the alpha1 and alpha2
+				double SumLoss1 = 0; //L1 loss sum: update the alpha
+				double SumLoss2 = 0; //L2 loss sum: update the alpha
+				double SumLoss11 = 0; //L1 loss sum: update the alpha
+				double SumLoss22 = 0; //L2 loss sum: update the alpha
+		         for (RTuple tempRating : trainData)   /// 
+						{
+			 			double  ratingHat= tempRating.dRating - Globalaverage - Bi[tempRating.iItemID] - Bu[tempRating.iUserID];
+						double rPrediction = this.getLocPrediction(tempRating.iUserID,tempRating.iItemID);
+						double Frobenius_err=(ratingHat-rPrediction);
+						SumLoss1+=Math.abs(Frobenius_err);
+						SumLoss2+=Math.pow(Frobenius_err,2);					
+						}
+		
+	     /////*****************Alpha=Cumulative Loss, Sum First; 
+		             SumLossCumulativeL1=SumLossCumulativeL1+SumLoss1;
+			         SumLossCumulativeL2=SumLossCumulativeL2+SumLoss2;
+			         double SumLoss1_R=SumLossCumulativeL1/(SumLossCumulativeL1+SumLossCumulativeL2);
+			         double SumLoss2_R=SumLossCumulativeL2/(SumLossCumulativeL1+SumLossCumulativeL2);
+			         alpha=Math.exp(-SumLoss1_R)/(Math.exp(-SumLoss1_R)+Math.exp(-SumLoss2_R));
+	    /////*****************Alpha=Cumulative Loss, Sum First; 	         
+	             
+	 /////////training the L3F model over////////	 
+		         
+
+///*****testing   RMSE, MAE, and NDCG of Situation 1*******************************************************************	
+		         
+			         
+			         
+			     if ((round%2==0)){
+		         double curErr;double curErr1;
+					
+						curErr = this.testCurrentRMSEu(Bi,Bu,Globalaverage);
+						if (min_Error_RMSE > curErr) 
+						{
+							min_Error_RMSE = curErr;
+							this.min_Round = round;
+						} 
+						else if ((round - this.min_Round) >= delayCount)
+						{
+							break;
+						}
+						
+				
+						curErr1 = this.testCurrentMAEu(Bi,Bu,Globalaverage);
+					
+					if (min_Error_MAE > curErr1) 
+					{
+						min_Error_MAE = curErr1;
+						this.min_Round = round;
+					} 
+					else if ((round - this.min_Round) >= delayCount)
+					{
+						break;
+					}
+
+			       						
+							 curErr= testNDCG(Bi,Bu,Globalaverage);
+	
+							if (curErr > MAX_NDCG) 
+							{
+								MAX_NDCG = curErr ;
+								this.min_Round = round;
+							} 
+							else if ((round - this.min_Round) >= delayCount)
+							{
+								break;
+							} 
+//		     	System.out.println(m + "\t" + this.min_Round + "\t" + curErr);  
+		    	 }//each 2 rounds test once		    
+    
+}/// one iteration over
+	
+}// train over
+	
+	
+	
+	
+	public double testNDCG(double []Bi,double []Bu, double u) //testing NDCG of situation 1
+	{
+		//
+		double NDCG = 0; int test_current_count=0;
+		int test_number=0; int user_number=0;
+		for (RTuple tempTestRating : testData)test_number=test_number+1;
+		 int ID_User_Cur=1;int test_id_current=0;
+		double [] actualRating; double [] predictRating;
+		actualRating=new double[item_MaxID ];
+		predictRating=new double[item_MaxID];
+		for (RTuple tempTestRating : testData)
+		{
+
+			if ((tempTestRating.iUserID-ID_User_Cur)==0)
+			{
+//				
+			    actualRating[test_id_current] = tempTestRating.dRating;
+			    predictRating[test_id_current]=this.getLocPrediction(tempTestRating.iUserID,tempTestRating.iItemID)
+						+u+Bu[tempTestRating.iUserID]+Bi[tempTestRating.iItemID];
+			 	test_id_current=test_id_current+1;
+			 	test_number=test_number-1;
+			 }
+			
+		    else //computing the DNG for each user except for last one
+		        { 
+//		    	System.out.println(ID_User_Cur);
+                int [] predict_index_sort;//first sort predict rating, store the index
+                double [] actual_rating_sort=new double [test_id_current];
+                double [] predict_list=new double [test_id_current];
+                for(int i=0;i<test_id_current;i++)
+                {  	actual_rating_sort[i]=actualRating[i];
+                	predict_list[i]=predictRating[i];
+//                	System.out.println(actualRating[i]+"\t"+predictRating[i]); 
+                	
+                }
+                
+                SortRetureIndex(actual_rating_sort) ;//sort descend
+                predict_index_sort=SortRetureIndex(predict_list);//sort descend
+                                
+                double DCG=0,normalizer=0; int K=Top_K;
+                if (test_id_current<Top_K)K=test_id_current;
+                   for(int i=0;i<K;i++)
+                {
+                	  DCG=DCG+(Math.pow(2,actualRating[predict_index_sort[i]])-1)/(Math.log(i+2)/Math.log(2));//computing DCG
+                	  normalizer=normalizer+(Math.pow(2,actual_rating_sort[i])-1)/(Math.log(i+2)/Math.log(2));
+//                	  System.out.println(actualRating[predict_index_sort[i]]+" -- "+predict_index_sort[i]+" -- "+actual_rating_sort[i]); 
+//                	  System.out.println(DCG+" DNCG  "+normalizer); 
+                }
+                   if(normalizer!=0) NDCG=NDCG+DCG/normalizer; 
+//  				 System.out.println(ID_User_Cur);
+         
+                 user_number=user_number+1;
+                ID_User_Cur=tempTestRating.iUserID;
+                test_number=test_number-1;
+                test_id_current=0;
+                actualRating[test_id_current] = tempTestRating.dRating;
+   			    predictRating[test_id_current]=this.getLocPrediction(tempTestRating.iUserID,tempTestRating.iItemID)
+   						+u+Bu[tempTestRating.iUserID]+Bi[tempTestRating.iItemID]; 
+   			    test_id_current=1;
+   		  		    }//over else if
+		
+			if (test_number==0) //computing the DNG for last user
+		    {
+                int [] predict_index_sort;//first sort predict rating, store the index
+                double [] actual_rating_sort=new double [test_id_current];
+                double [] predict_list=new double [test_id_current];
+                for(int i=0;i<test_id_current;i++)
+                {  	actual_rating_sort[i]=actualRating[i];
+                	predict_list[i]=predictRating[i];
+//                	System.out.println(actualRating[i]+"\t"+predictRating[i]); 
+                	
+                }
+                
+                SortRetureIndex(actual_rating_sort) ;//sort descend
+                predict_index_sort=SortRetureIndex(predict_list);//sort descend
+                                
+                double DCG=0,normalizer=0; int K=Top_K;
+                if (test_id_current<Top_K)K=test_id_current;
+                   for(int i=0;i<K;i++)
+                {
+                	  DCG=DCG+(Math.pow(2,actualRating[predict_index_sort[i]])-1)/(Math.log(i+2)/Math.log(2));//computing DCG
+                	  normalizer=normalizer+(Math.pow(2,actual_rating_sort[i])-1)/(Math.log(i+2)/Math.log(2));
+
+                }
+                   if(normalizer!=0) NDCG=NDCG+DCG/normalizer; 
+                   user_number=user_number+1;
+
+			    }
+		}//over for  (RTuple tempTestRating : testData)
+   return (NDCG/user_number);
+	} //over testNDCG
+	
+	
+	
+	public int []SortRetureIndex(double []a) //return index for the input list by sorting as descend
+	{
+	  	int [] index;
+	  	index= new int [a.length];
+    	HashMap map=new HashMap();
+    	for(int i=0;i<a.length;i++)
+    	{
+    	map.put(a[i],i); //value and index are recorded in Map
+    	}
+    	//sorting
+    	List list=new ArrayList();
+    	Arrays.sort(a); //ascend
+	
+    	for(int i=0;i<a.length;i++)
+    	{
+    	list.add(a[i]);
+    	}
+    	Collections.reverse(list); //descend
+    	
+    	for(int i=0;i<list.size();i++)
+    	{
+    	a[i]=(Double)list.get(i);
+    	}
+    	
+    	//find the index
+    	for(int i=0;i<a.length;i++)
+    	{
+//    	System.out.println(a[i]);
+    	index[i]=(int) map.get(a[i]);
+    	}
+	   	return index;
+	}
+	
+
+	
+	
+	//testing Precision and NDCG of situation 2
+	public double [] testPrecision_NDCG_Random(double []Bi,double []Bu, double u,int NumberPredicition,int User_Max,int item_Max)
+	{
+		
+		int [][]predictionID=new int[User_Max][NumberPredicition];
+		predictionID=GeneratePredictionID(NumberPredicition, User_Max, item_Max);//random ID for prediction
+		
+		
+		double NDCG = 0,Precision=0; 
+		int test_number=0; int user_number=0;
+		for (RTuple tempTestRating : testData)test_number=test_number+1;
+//		System.out.println(test_number);
+		 int ID_User_Cur=1;int test_id_current=0;
+		double [] actualRating; int [] actualItemID; 
+		actualRating=new double[item_Max]; actualItemID=new int[item_Max];
+		for (RTuple tempTestRating : testData)
+		{
+
+			if ((tempTestRating.iUserID-ID_User_Cur)==0)
+			{
+			    actualRating[test_id_current] = tempTestRating.dRating;
+			    actualItemID[test_id_current] = tempTestRating.iItemID;
+			 	test_id_current=test_id_current+1;
+			 	test_number=test_number-1;
+			 }
+			
+		    else //computing the DNG for each user except for last one
+		        { 
+		    
+                double [] actual_rating_sort=new double [test_id_current];
+                Integer [] actual_Item_ID=new Integer [test_id_current];
+                 for(int i=0;i<test_id_current;i++)
+                {  	actual_rating_sort[i]=actualRating[i];
+                    actual_Item_ID[i]=actualItemID[i];
+                }
+                
+                  int PredictNumber=NumberPredicition;
+//                predictionID[ID_User_Cur];
+                if (predictionID[ID_User_Cur-1].length<NumberPredicition)PredictNumber=predictionID[ID_User_Cur-1].length;
+               
+                int [] predictItemID=new int[PredictNumber];
+                double [] predictItemIDrating=new double[PredictNumber];
+                for (int i = 0; i < PredictNumber; i++)
+                	{
+                	predictItemID[i]=predictionID[ID_User_Cur-1][i];
+                	predictItemIDrating[i]=this.getLocPrediction(ID_User_Cur,predictionID[ID_User_Cur-1][i])
+    						+u+Bu[ID_User_Cur]+Bi[predictionID[ID_User_Cur-1][i]];
+//                	System.out.println(predictItemID[i] + "\t"+predictItemIDrating[i]);	
+                	}
+                int [] predict_index_sort=new int [PredictNumber];
+                predict_index_sort=SortRetureIndex(predictItemIDrating);//sort descend
+                SortRetureIndex(actual_rating_sort);//sort descend
+         
+                int K=Top_K;
+                if (test_id_current<Top_K)K=test_id_current;
+                Integer [] predict_index_sort_TopK=new Integer[K];	
+                   for(int i=0;i<K;i++){if (i<predict_index_sort.length)
+                	   predict_index_sort_TopK[i]=predictItemID[predict_index_sort[i]];}
+
+                Set<Integer> Samelist = getIds(actual_Item_ID,predict_index_sort_TopK); //find same elements
+                double tem_precision=Samelist.size();
+                Precision=Precision+tem_precision/K;///       computing   precision
+
+                int [] SameID=new int [Samelist.size()];
+                int i=0;
+                for(Integer outputID : Samelist) {  
+                	SameID[i]=outputID;
+                    i++;
+                   } 
+
+                int [] SameIDsort=new int [Samelist.size()];
+                int order=0;int sameNum=Samelist.size();
+                for (int j = 0; j < K; j++)
+                  for (i = 0; i < Samelist.size();i++) 
+                		{
+                	  if ((predict_index_sort_TopK[j]==SameID[i])&&(sameNum>0))
+                	  {
+                 		  SameIDsort[order]=predict_index_sort_TopK[j];
+                		  sameNum=sameNum-1;
+                			order=order+1;}}
+                
+                double DCG=0;
+                for (i = 0; i < Samelist.size();i++)
+                	for (int j = 0; j < test_id_current;j++) 
+        		{
+                		if (SameIDsort[i]==actual_Item_ID[j])
+                		{
+                			
+           	  DCG=DCG+(Math.pow(2,actualRating[j])-1)/(Math.log(i+2)/Math.log(2));//computing DCG
+
+        		}
+        		}
+          
+                double normalizer=0;
+                for( i=0;i<K;i++)   
+                {
+               	  normalizer=normalizer+(Math.pow(2,actual_rating_sort[i])-1)/(Math.log(i+2)/Math.log(2));
+
+                }
+                if(normalizer!=0) NDCG=NDCG+DCG/normalizer; 
+ 
+                 user_number=user_number+1;
+                ID_User_Cur=tempTestRating.iUserID;
+                test_number=test_number-1;
+                test_id_current=0;
+                actualRating[test_id_current] = tempTestRating.dRating;
+                test_id_current=1;
+ 	  		    }//over else if
+		
+			if (test_number==0) //computing the DNG for last user
+		    {
+	               double [] actual_rating_sort=new double [test_id_current];
+	                Integer [] actual_Item_ID=new Integer [test_id_current];
+	                 for(int i=0;i<test_id_current;i++)
+	                {  	actual_rating_sort[i]=actualRating[i];
+	                    actual_Item_ID[i]=actualItemID[i];
+	                }
+	                
+	                  int PredictNumber=NumberPredicition;
+	                if (predictionID[ID_User_Cur-1].length<NumberPredicition)PredictNumber=predictionID[ID_User_Cur-1].length;
+	               
+	                int [] predictItemID=new int[PredictNumber];
+	                double [] predictItemIDrating=new double[PredictNumber];
+	                for (int i = 0; i < PredictNumber; i++)
+	                	{
+	                	predictItemID[i]=predictionID[ID_User_Cur-1][i];
+	                	predictItemIDrating[i]=this.getLocPrediction(ID_User_Cur,predictionID[ID_User_Cur-1][i])
+	    						+u+Bu[ID_User_Cur]+Bi[predictionID[ID_User_Cur-1][i]];
+	                	}
+	                int [] predict_index_sort=new int [PredictNumber];
+	                predict_index_sort=SortRetureIndex(predictItemIDrating);//sort descend
+	                SortRetureIndex(actual_rating_sort);//sort descend
+ 	                int K=Top_K;
+	                if (test_id_current<Top_K)K=test_id_current;
+	                Integer [] predict_index_sort_TopK=new Integer[K];	
+	                   for(int i=0;i<K;i++)predict_index_sort_TopK[i]=predictItemID[predict_index_sort[i]];
+	                   
+//	                   for(int i=0;i<K;i++)System.out.println(predict_index_sort_TopK[i]+"\t");
+	                   
+	                Set<Integer> Samelist = getIds(actual_Item_ID,predict_index_sort_TopK); //find same elements
+	                double tem_precision=Samelist.size();
+	                Precision=Precision+tem_precision/K;///       computing   precision
+//	                System.out.println("same num:"+tem_precision+"Precision:"+tem_precision/K);
+	               
+	                int [] SameID=new int [Samelist.size()];
+	                int i=0;
+	                for(Integer outputID : Samelist) {  
+	                	SameID[i]=outputID;
+//	                	 System.out.println("same id:"+SameID[i]);
+	                    i++;
+	                   } 
+	                
+	                int [] SameIDsort=new int [Samelist.size()];
+	                int order=0;
+	                for (int j = 0; j < K; j++)
+	                  for (i = 0; i < Samelist.size();i++) 
+	                		{
+	                	  if (predict_index_sort_TopK[j]==SameID[i])
+	                	  {SameIDsort[order]=predict_index_sort_TopK[j];
+	                			order=order+1;}}
+	                
+	                double DCG=0;
+	                for (i = 0; i < Samelist.size();i++)
+	                	for (int j = 0; j < test_id_current;j++) 
+	        		{
+	                		if (SameIDsort[i]==actual_Item_ID[j])
+	                		{
+	                			
+	           	  DCG=DCG+(Math.pow(2,actualRating[j])-1)/(Math.log(i+2)/Math.log(2));//computing DCG
+	        		}
+	        		}
+
+	                double normalizer=0;
+	                for( i=0;i<K;i++)   
+	                {
+	               	  normalizer=normalizer+(Math.pow(2,actual_rating_sort[i])-1)/(Math.log(i+2)/Math.log(2));
+//	                	   System.out.println("normalizerXXXXXXX:"+actual_rating_sort[i]);
+	                }
+
+	                if(normalizer!=0) NDCG=NDCG+DCG/normalizer; 
+	                 user_number=user_number+1;
+
+			    }
+		}//over for  (RTuple tempTestRating : testData)
+		double [] result= new double [2];
+//		 System.out.println(NDCG/user_number);
+		result[0]=Precision/user_number;
+		result[1]=NDCG/user_number;
+		 return result;
+	} //over testNDCG
+	
+
+	
+	///randomly generate predictionID that are different with train User ID
+public int [][] GeneratePredictionID(int NumberPredicition,int User_Max,int item_Max) 	
+{
+ 
+//			int test_current_count=0;
+			int test_number=0; int user_number=0;
+			for (RTuple tempTestRating : trainData)test_number=test_number+1;
+//			System.out.println(test_number);
+		    int ID_User_Cur=1;int test_id_current=0;
+			int [][]predictionID=new int[User_Max][NumberPredicition];
+			Integer [] actualItemID=new Integer[item_Max];
+			for (RTuple tempTestRating : trainData)
+			{
+
+				if ((tempTestRating.iUserID-ID_User_Cur)==0)
+				{
+				    actualItemID[test_id_current] = tempTestRating.iItemID;
+				 	test_id_current=test_id_current+1;
+				 	test_number=test_number-1;
+				 }
+				
+			    else //computing the DNG for each user except for last one
+			        { 
+//			    	  System.out.println("ttttt");
+	                Integer [] predictItemID_cache=new Integer[(int) 1.5*NumberPredicition];
+                     int i=0;
+	                while (i<((int) 1.5*NumberPredicition)) // generate random 2000 ID different from TrainData
+	           			{
+	                	 int RandomInt = (int)(Math.random()*item_Max)+1;
+	                	 Integer [] RandomInteger=new Integer[1];
+	                	 RandomInteger[0]=RandomInt;
+	                	 List<Integer> list = compare(actualItemID,RandomInteger);//compare differnt  
+	                    
+	                	 if(list.size()>0){predictItemID_cache[i]=list.get(0);i=i+1;}
+	           			}
+	                
+	                
+	                  Object [] Object_predictItemID_cache=new Object[(int) 1.5*NumberPredicition];
+	                  for (i=0;i<((int) 1.5*NumberPredicition);i++)Object_predictItemID_cache[i]=predictItemID_cache[i];
+	                  Object [] Object_predictItemID_cache_delete=new Object[(int) 1.5*NumberPredicition];
+	                  Object_predictItemID_cache_delete=DeleteDeduplication(Object_predictItemID_cache);  
+
+	                  int N=Object_predictItemID_cache_delete.length;
+	                  if (N>NumberPredicition)N=NumberPredicition;
+	                  
+	                  for (i=0;i<N;i++)
+	                	  {predictionID[ID_User_Cur-1][i]=Integer.parseInt(Object_predictItemID_cache_delete[i].toString());
+//	                	  System.out.println(predictItemID_result[i]);
+	                	  }
+	                  test_id_current=0;
+	                  actualItemID=new Integer[item_Max];
+	                  actualItemID[test_id_current] = tempTestRating.iItemID;
+	                  test_number=test_number-1;
+	                  test_id_current=1;
+	                  ID_User_Cur=tempTestRating.iUserID;
+          }//else over
+				if (test_number==0) //computing the DNG for last user
+			    {
+	                Integer [] predictItemID_cache=new Integer[(int) 1.5*NumberPredicition];
+                    int i=0;
+	                while (i<((int) 1.5*NumberPredicition)) // generate random 2000 ID different from TrainData
+	           			{
+	                	 int RandomInt = (int)(Math.random()*item_Max)+1;
+	                	 Integer [] RandomInteger=new Integer[1];
+	                	 RandomInteger[0]=RandomInt;
+	                	 List<Integer> list = compare(actualItemID,RandomInteger);//compare differnt  
+	                    
+	                	 if(list.size()>0){predictItemID_cache[i]=list.get(0);i=i+1;}
+	           			}
+	                
+	                
+	                  Object [] Object_predictItemID_cache=new Object[(int) 1.5*NumberPredicition];
+	                  for (i=0;i<((int) 1.5*NumberPredicition);i++)Object_predictItemID_cache[i]=predictItemID_cache[i];
+	                  Object [] Object_predictItemID_cache_delete=new Object[(int) 1.5*NumberPredicition];
+	                  Object_predictItemID_cache_delete=DeleteDeduplication(Object_predictItemID_cache);  
+
+	                  int N=Object_predictItemID_cache_delete.length;
+	                  if (N>NumberPredicition)N=NumberPredicition;
+	                  
+	                  for (i=0;i<N;i++)
+	                	  {predictionID[ID_User_Cur-1][i]=Integer.parseInt(Object_predictItemID_cache_delete[i].toString());
+//	                	  System.out.println(predictItemID_result[i]);
+	                	  }
+				    }// if over
+	
+}//for data over	
+	
+			return predictionID;
+		
+}	
+	
+
+	
+/////compare two array, return the  elements of t2 that are not in t1	
+	public static <T> List<T> compare(T[] t1, T[] t2) {    
+	      List<T> list1 = Arrays.asList(t1); //
+	      List<T> list2 = new ArrayList<T>();//
+	      for (T t : t2) {    
+	          if (!list1.contains(t)) {    
+	              list2.add(t);    
+	          }    
+	      }    
+	      return list2;    
+	  } 
+/////compare two array, return the different elements		
+	
+	
+	public static Set<Integer> getIds(Integer[] a, Integer[] b){  
+
+	      Set<Integer> same = new HashSet<Integer>();  //
+	      Set<Integer> temp = new HashSet<Integer>();  //
+
+	      for (int i = 0; i < a.length; i++) {  
+	          temp.add(a[i]);   //
+	      }  
+
+	      for (int j = 0; j < b.length; j++) {  
+	        if(!temp.add(b[j]))  
+	            same.add(b[j]);  
+	    }  
+	    return same;   
+	  }  	
+	
+	
+	public static Object[] DeleteDeduplication(Object[] originArray) {
+        List list = new ArrayList();
+        for (int i = 0; i < originArray.length; i++) {
+            if (!list.contains(originArray[i])) {
+                list.add(originArray[i]);
+            }
+        }
+        Object[] resultArray = list.toArray();
+        return resultArray;
+    }
+
+	
+	
+	
+	
+	
+	
+
+////////////////////////Setting the parameter in the main Function//////////////////////////////////
+	public static void main(String[] argv) throws NumberFormatException,IOException
+	{
+         ///setting the parameters/////	
+    Common_Function.initializeRatings("./Jester_train.txt","./Jester_test.txt", "::");//input dataset
+		int top_k=5;//testing Top 
+    int m=1;//1 means no Bias, 2 means Bias 
+		Common_Function.eta =0.001;// learning rate eta
+		Common_Function.lambda = 0.01;//regularization parameter lambda
+		Common_Function.featureDimension =20 ;//Latent factor dimension
+		///setting the parameters/////		
+			
+			
+		        int Test_Random_Top_K=500;  //randomly choosing items from unrated items by user
+			      Common_Function.delayCount = 20;
+				    Common_Function.trainingRound = 1000;// max training round 
+			      Common_Function.initiStaticArrays();
+			      min_Error_RMSE = 1e10;
+			      min_Error_MAE= 1e10;			     
+			      Common_Function.initBiasSettings(true, true, 1, 1);
+			      Main_Function L3F = new Main_Function(1);   
+			      long startTime=System.currentTimeMillis();
+			      L3F.m=m;
+			      L3F.Top_K=top_k;			  	 
+			      L3F.Test_Random_Top_K=Test_Random_Top_K;
+			      L3F.train();   
+			      System.out.println("eta"+eta+ "\t" +"lambda"+lambda+ "\t  " +"RMSE:"+min_Error_RMSE+"\t   "+"MAE:"+min_Error_MAE);
+			      System.out.println("Situation 1 of TopK: "+top_k+"\t");
+			      System.out.println("NDCG: "+L3F.MAX_NDCG); 
+	}
+}
+
