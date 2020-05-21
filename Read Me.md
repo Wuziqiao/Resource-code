@@ -2,7 +2,7 @@
 
 This is the source code for paper "An L1-and-L2-norm-oriented Latent Factor Model for Recommender Systems" that is submitted to IEEE transactions on neural networks and learning systems. The uploaded “L3F_Code.rar” contains 4 files, i.e., L3F-RMSE-MAE-NDCG-Situation1, L3F-Precision-NDCG-Situation2, L3F-Noise, and L3F-Parallelization. Each file can be used to run our algorithm directly with a dataset Jester. “L3F-RMSE-MAE-NDCG-Situation1” is used to test RMSE, MAE, and NDCG of Situation 1. “L3F-Precision-NDCG-Situation2” is used to test Precision and NDCG of Situation 2. “L3F-Noise” is used to test Outlier Data Sensitivity. “L3F-Parallelization” is used to test computational efficiency with a parallel version implemented by Hogwild!. 
 
-2. Run our algorithm
+2.Run our algorithm
 
 (1)	Download the file “L3F_Code.rar”.
 
