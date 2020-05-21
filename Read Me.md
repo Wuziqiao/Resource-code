@@ -16,8 +16,9 @@ Parameters are lised at the end of “Main_Function.java”. Their meaning are e
 (2)	int top_k: Top K recommendation. 
 (3)	int m: Bias controller, 1 means without Bias, 2 means with Bias. 
 (4)	CommonRecomm_NEW.ThreadNUM: core number of parallelization. 
-(5)	Common_Function.noise_ratio: control the noise_ratio in the range of [0-1].  
+(5)	Common_Function.noise_ratio: control the noise_ratio in the range of [0-1].
 (6)	Common_Function.eta: learning rate η .
 (7)	Common_Function.lambda: regularization parameter λ.
 (8)	Common_Function.featureDimension: Latent factor dimension f. 
+
 
