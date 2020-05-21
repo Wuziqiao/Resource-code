@@ -701,18 +701,18 @@ public int [][] GeneratePredictionID(int NumberPredicition,int User_Max,int item
 	public static void main(String[] argv) throws NumberFormatException,IOException
 	{
          ///setting the parameters/////	
-    Common_Function.initializeRatings("./Jester_train.txt","./Jester_test.txt", "::");//input dataset
+		Common_Function.initializeRatings("./Jester_train.txt","./Jester_test.txt", "::");//input dataset
 		int top_k=5;//testing Top 
-    int m=1;//1 means no Bias, 2 means Bias 
+		int m=1;//1 means no Bias, 2 means Bias
 		Common_Function.eta =0.001;// learning rate eta
 		Common_Function.lambda = 0.01;//regularization parameter lambda
 		Common_Function.featureDimension =20 ;//Latent factor dimension
 		///setting the parameters/////		
 			
 			
-		        int Test_Random_Top_K=500;  //randomly choosing items from unrated items by user
-			      Common_Function.delayCount = 20;
-				    Common_Function.trainingRound = 1000;// max training round 
+			      int Test_Random_Top_K=500;  //randomly choosing items from unrated items by user
+			      Common_Function.delayCount = 20;			      
+			      Common_Function.trainingRound = 1000;// max training round				
 			      Common_Function.initiStaticArrays();
 			      min_Error_RMSE = 1e10;
 			      min_Error_MAE= 1e10;			     
