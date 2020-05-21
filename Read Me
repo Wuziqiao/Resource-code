@@ -12,7 +12,7 @@ This is the source code for paper "An L1-and-L2-norm-oriented Latent Factor Mode
 
 (4)	Open “Main_Function.java” and run. 
 
-3.Parameters setting. 
+3.Parameters setting
 
 Parameters are listed  at the end of “Main_Function.java”. Their meaning is explained as follows.
 
@@ -45,4 +45,9 @@ https://grouplens.org/datasets/eachmovie/
 https://webscope.sandbox.yahoo.com/catalog.php?datatype=r
 
 http://www.occamslab.com/petricek/data/
+
+5.Code Online
+
+The codes of L3F model for “L3F-RMSE-MAE-NDCG-Situation1” are available to see on Github online. Please refer to the other three files: Common_Function, Main_Function, RTuple. 
+
 
