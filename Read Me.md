@@ -33,6 +33,7 @@ Parameters are listed  at the end of “Main_Function.java”. Their meaning is 
 (8)	Common_Function.featureDimension: Latent factor dimension f. 
 
 4.Datasets 
+
 The dataset Jester is provided in the code. The other datasets used in this paper can be downloaded from the following repositories.
 
 https://www.librec.net/datasets.html
